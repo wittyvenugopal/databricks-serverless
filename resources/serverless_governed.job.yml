@@ -1,0 +1,54 @@
+# Serverless governance knobs on one job. Each one is a field on the job; nothing here needs an admin,
+# except budget_policy_id (the policy must exist and you need the User permission on it).
+resources:
+  jobs:
+    serverless_governed:
+      name: serverless governed
+      description: Small serverless job showing tags, performance mode, budget policy, limits and alerts.
+
+      # 1. Cost attribution: job tags are copied to system.billing.usage.custom_tags for serverless runs.
+      tags:
+        project: bundle-smoke-test
+        cost_centre: ${var.cost_centre}
+        owner: ${workspace.current_user.short_name}
+
+      # 2. Budget policy (account-level object). It adds its own tags to the usage rows and can be required
+      #    for users. Empty = none (or the workspace default policy, if an admin set one).
+      budget_policy_id: ${var.budget_policy_id}
+
+      # 3. Performance mode: STANDARD = cheaper, slower start (minutes); PERFORMANCE_OPTIMIZED = fast start.
+      #    Override per run: databricks jobs run-now --json '{"job_id": ..., "performance_target": "..."}'
+      performance_target: ${var.performance_target}
+
+      # 4. Limits: stop runaway runs and parallel duplicates.
+      timeout_seconds: 1800
+      max_concurrent_runs: 1
+      queue:
+        enabled: true
+
+      # 5. Alerts: warn when a run is slower than expected (before the timeout kills it).
+      health:
+        rules:
+          - metric: RUN_DURATION_SECONDS
+            op: GREATER_THAN
+            value: 600
+      email_notifications:
+        on_failure: [ "${workspace.current_user.userName}" ]
+        on_duration_warning_threshold_exceeded: [ "${workspace.current_user.userName}" ]
+
+      # 6. Who may see / run it (owner keeps CAN_MANAGE).
+      permissions:
+        - level: CAN_VIEW
+          group_name: users
+
+      # 7. Pinned environment: same Python packages every run.
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "2"
+      tasks:
+        - task_key: busy_work
+          environment_key: default
+          timeout_seconds: 900
+          spark_python_task:
+            python_file: ../src/busy_work.py

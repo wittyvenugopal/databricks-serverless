@@ -1,0 +1,37 @@
+# Test job for the run limits (tight on purpose). Pass sleep_seconds to make a run slow:
+#   sleep 30  -> passes the 20 s health threshold -> "duration warning" email, run still succeeds
+#   sleep 120 -> hits the 90 s timeout           -> run ends TIMEDOUT
+#   two runs at once -> the second waits QUEUED (max_concurrent_runs: 1, queue on)
+resources:
+  jobs:
+    serverless_limits_test:
+      name: serverless limits test
+      tags:
+        project: bundle-smoke-test
+        cost_centre: ${var.cost_centre}
+      performance_target: PERFORMANCE_OPTIMIZED   # fast start, so the timings are about the limits
+      timeout_seconds: 90
+      max_concurrent_runs: 1
+      queue:
+        enabled: true
+      health:
+        rules:
+          - metric: RUN_DURATION_SECONDS
+            op: GREATER_THAN
+            value: 20
+      email_notifications:
+        on_failure: [ "${workspace.current_user.userName}" ]
+        on_duration_warning_threshold_exceeded: [ "${workspace.current_user.userName}" ]
+      parameters:
+        - name: sleep_seconds
+          default: "0"
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "2"
+      tasks:
+        - task_key: busy_work
+          environment_key: default
+          spark_python_task:
+            python_file: ../src/busy_work.py
+            parameters: [ "{{job.parameters.sleep_seconds}}" ]

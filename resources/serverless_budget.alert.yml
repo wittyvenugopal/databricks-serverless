@@ -1,0 +1,36 @@
+# Budget alert without the account console: a SQL alert on system.billing.usage.
+# Every hour: month-to-date serverless list cost per cost_centre tag; alert (email) when any is above the budget.
+resources:
+  alerts:
+    serverless_budget:
+      display_name: serverless month-to-date cost over budget
+      warehouse_id: ${var.warehouse_id}
+      query_text: |
+        select coalesce(u.custom_tags['cost_centre'], '(untagged)') as cost_centre,
+               round(sum(u.usage_quantity * p.pricing.effective_list.default), 2) as mtd_list_cost
+        from system.billing.usage u
+        join system.billing.list_prices p
+          on u.sku_name = p.sku_name and u.cloud = p.cloud
+         and u.usage_start_time >= p.price_start_time
+         and (p.price_end_time is null or u.usage_start_time < p.price_end_time)
+        where u.product_features.is_serverless
+          and u.usage_date >= date_trunc('month', current_date)
+        group by 1
+      evaluation:
+        source:
+          name: mtd_list_cost
+          aggregation: MAX
+        comparison_operator: GREATER_THAN
+        threshold:
+          value:
+            double_value: ${var.monthly_budget}
+        notification:
+          notify_on_ok: true
+          retrigger_seconds: 86400          # remind at most once a day while over budget
+          subscriptions:
+            - user_email: ${workspace.current_user.userName}
+      schedule:
+        quartz_cron_schedule: "0 0 * * * ?"   # hourly
+        timezone_id: Europe/London
+        pause_status: UNPAUSED              # note: dev mode (mode: development) still deploys it PAUSED;
+                                            # resume it in the UI or with `databricks alerts-v2 update-alert`

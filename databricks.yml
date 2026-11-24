@@ -1,0 +1,40 @@
+# Serverless governance lab: one bundle with the controls Databricks offers for serverless jobs.
+#   serverless_governed    - small serverless job with tags, usage policy, performance mode, timeout,
+#                            health alert, concurrency limit, permissions, pinned environment
+#   serverless_limits_test - same work with tight limits, to see timeout / queue / health alerts fire
+#   serverless_budget      - hourly SQL alert on system.billing.usage (month-to-date cost per cost_centre)
+# Usage:
+#   databricks bundle deploy -p <profile>
+#   databricks bundle run serverless_governed -p <profile>
+#   databricks bundle deploy -p <profile> --var budget_policy_id=<usage policy id>
+bundle:
+  name: databricks-serverless-governance
+
+include:
+  - resources/*.yml
+
+variables:
+  warehouse_id:
+    description: SQL warehouse for the budget alert
+    lookup:
+      warehouse: Serverless Starter Warehouse
+  cost_centre:
+    description: cost_centre tag on the jobs (cost attribution)
+    default: data-platform
+  budget_policy_id:
+    description: Serverless usage (budget) policy id - workspace Settings > Compute > Serverless usage policies; empty = none
+    default: ""
+  performance_target:
+    description: STANDARD (fewer DBUs, slower start) or PERFORMANCE_OPTIMIZED (fast start)
+    default: STANDARD
+  monthly_budget:
+    description: Month-to-date serverless list cost (USD) per cost_centre that triggers the budget alert
+    default: 500
+
+targets:
+  dev:
+    mode: development
+    default: true
+    presets:
+      tags:                 # added to every job in this target, on top of each job's own tags
+        environment: dev
